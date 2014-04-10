@@ -55,8 +55,10 @@ def recvall(s, length, timeout=2):
 
 def recvmsg(s):
     hdr = recvall(s, 5)
-    if hdr is None or len(hdr) < 5:
+    if hdr is None:
       return None, None, None
+    if hdr == "":
+      return 22, 0, "\x0e"
     typ, ver, ln = struct.unpack('>BHH', hdr)
     pay = recvall(s, ln, 10)
     if pay is None:
@@ -65,10 +67,13 @@ def recvmsg(s):
 
 def open_connection(host, port):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print "opening connection"
     conn.connect((host, port))
+    print "sending hello"
     conn.send(hello)
     while True:
         message_type, version, payload = recvmsg(conn)
+        print message_type, version, len(payload)
         if message_type == None:
             return (0, 'Server closed connection without sending Server Hello.', None)
         # Look for server hello done message.
