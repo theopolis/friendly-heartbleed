@@ -1,6 +1,7 @@
 import sys
-import checker
 import argparse
+
+import friendlybleed as checker
 
 results = []
 
